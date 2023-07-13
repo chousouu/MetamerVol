@@ -2,17 +2,32 @@ import numpy as np
 import scipy 
 
 NUMBER_OF_SAMPLES = 1000
+WAVELENGTH_RESOLUTION = 10
 
-# GENERAL TODO'S :
-# do we norm r(lambda) ????????????????????
-# Make descriptions to funcs
+# GENERAL TODO'S (important -> less important):
+# 1.PEP8 style guide check
+# 2.Make descriptions to funcs
+# 3.do we norm r(lambda) ????????????????????UPD:where??
 
 
-def sample_unit_sphere(vector_size, sample_amount):
-    vec = np.random.randn(vector_size, sample_amount)
-    vec_norm = (vec / np.linalg.norm(vec, axis = 0)).T 
+def sample_unit_sphere(color_sys, wavelengths, sample_amount):
+    """
+    # returns k that belongs to R^(2N) for mmb and R^N for ocs
+    """
+    vector_size = color_sys.shape[1]
+    wavelengths_size = np.shape(wavelengths)[0]
+    k_sampled = []    
+    wave = 0
 
-    return vec_norm
+    for _ in range(sample_amount):
+        rand_components = np.random.randn(vector_size - 1, 1)
+        k_1 = np.sum(np.multiply(rand_components.T, color_sys[wave, 1:])) / color_sys[wave, 0]
+        k_i = np.append(k_1, rand_components)
+        k_sampled += (k_i / np.linalg.norm(k_i)).tolist()
+        wave = (wave + 1) % wavelengths_size
+
+    return np.reshape(np.array(k_sampled), (vector_size, sample_amount)).T
+
 
 def solve_linear_problem(objective_func_coef, constrain_func = None, 
                          constrain_func_value = None, bounds = None):
@@ -50,19 +65,20 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
                illum_phi, sens_phi,
                illum_psi, sens_psi,
                sampling_resolution = NUMBER_OF_SAMPLES):
+
+#TODO: HARDCODED NEED TO BE FIXED! (maybe refactor functions)
+    wavelengths = np.arange(400, 701, WAVELENGTH_RESOLUTION) 
     
-    print("shapes", illum_phi.shape, sens_phi.shape)
     S_phi = np.stack([illum_phi * sens for sens in sens_phi.T], axis = 1) #color sys; size = q x N
     S_psi = np.stack([illum_psi * sens for sens in sens_psi.T], axis = 1) #
     S = np.concatenate((S_phi, S_psi), axis = 1) #q x 2N; q - wavelength resolution
 
     mmb_extr_points = []
-    vector_size = S.shape[1] # k belongs to R^(2N) for mmb and R^N for ocs
 
-    print("shape of unit sphere", sample_unit_sphere(vector_size, sampling_resolution).shape)
+    # print("shape of unit sphere", sample_unit_sphere(vector_size, sampling_resolution).shape)
 
     # !!!!is amount of k's component should be equal to 2N / N for mmb/ocs? according to (3) in the statya 
-    for k in sample_unit_sphere(vector_size, sampling_resolution):
+    for k in sample_unit_sphere(S, wavelengths, sampling_resolution):
 
         # print("S, k, S@K", S.shape, k.shape, np.dot(S, k).shape)
         # print("constr_func = value :", S_phi.shape, "=", metameric_color.shape, metameric_color)
@@ -91,7 +107,6 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
         mmb_extr_points.extend([min_color_psi, max_color_psi])
         # print('==========')
 
-    print((mmb_extr_points))
     return mmb_extr_points
 
 #TODO: maybe merge together ocs and mmb funcs? (get_figure_volume/points)
@@ -99,11 +114,12 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
 def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
     S = np.stack([illum * sens_ for sens_ in sens.T], axis = 1)
 
+#TODO: HARDCODED NEED TO BE FIXED! (maybe refactor functions)
+    wavelengths = np.arange(400, 701, WAVELENGTH_RESOLUTION) 
+
     ocs_extr_points = []
 
-    vector_size = S.shape[1] # k belongs to R^(N)
-
-    for k in sample_unit_sphere(vector_size, sampling_resolution):
+    for k in sample_unit_sphere(S, wavelengths, sampling_resolution):
         max_reflectance, min_reflectance =\
         solve_linear_problem(objective_func_coef = np.dot(S, k), bounds = (0,1))
 
