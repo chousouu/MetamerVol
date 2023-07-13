@@ -1,18 +1,22 @@
 import numpy as np
 import scipy 
+
+NUMBER_OF_SAMPLES = 1000
+
+# GENERAL TODO'S :
 # do we norm r(lambda) ????????????????????
+# Make descriptions to funcs
 
-def sample_unit_sphere(npoints):
-    vec = np.random.randn(3, npoints)
-    vec_norm = vec / np.linalg.norm(vec, axis = 0)
 
-    # print("vec - ", vec)
+def sample_unit_sphere(vector_size, sample_amount):
+    vec = np.random.randn(vector_size, sample_amount)
+    vec_norm = (vec / np.linalg.norm(vec, axis = 0)).T 
+
     return vec_norm
 
 def solve_linear_problem(objective_func_coef, constrain_func = None, 
                          constrain_func_value = None, bounds = None):
     '''
-    TODO: fullfill the descriptions
     ----------
     returns solution vector pair : (x_max, x_min)
     '''
@@ -44,7 +48,8 @@ def solve_linear_problem(objective_func_coef, constrain_func = None,
 
 def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
                illum_phi, sens_phi,
-               illum_psi, sens_psi):
+               illum_psi, sens_psi,
+               sampling_resolution = NUMBER_OF_SAMPLES):
     
     print("shapes", illum_phi.shape, sens_phi.shape)
     S_phi = np.stack([illum_phi * sens for sens in sens_phi.T], axis = 1) #color sys; size = q x N
@@ -52,14 +57,16 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
     S = np.concatenate((S_phi, S_psi), axis = 1) #q x 2N; q - wavelength resolution
 
     mmb_extr_points = []
-    sampling_resolution = S.shape[1] # k belongs to R^(2N)
+    vector_size = S.shape[1] # k belongs to R^(2N) for mmb and R^N for ocs
 
-    print("shape of unit sphere", sample_unit_sphere(sampling_resolution).shape)
-    for k in sample_unit_sphere(sampling_resolution):
-        print("S, k, S@K", S.shape, k.shape, np.dot(S, k).shape)
+    print("shape of unit sphere", sample_unit_sphere(vector_size, sampling_resolution).shape)
+
+    # !!!!is amount of k's component should be equal to 2N / N for mmb/ocs? according to (3) in the statya 
+    for k in sample_unit_sphere(vector_size, sampling_resolution):
+
+        # print("S, k, S@K", S.shape, k.shape, np.dot(S, k).shape)
         # print("constr_func = value :", S_phi.shape, "=", metameric_color.shape, metameric_color)
         # print("z0 size : ", metameric_color.ndim, metameric_color.shape, metameric_color)
-
         # print(f"b = {metameric_color.shape}/ {metameric_color.ndim}, A_Eq = {S_phi.T.shape}, {metameric_color.shape} == {S_phi.T.shape[0]}")
 
         max_reflectance, min_reflectance =\
@@ -68,37 +75,35 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
 
         # scale so the brightest illum color response == 1  
         # scale = np.max(S_psi)
+        # print(max_reflectance, min_reflectance)
+        
         scale = np.max(np.dot(sens_psi.T, illum_psi))
 
-
-        # print(max_reflectance, min_reflectance)
         max_color_psi = np.dot(max_reflectance, S_psi) / scale
         min_color_psi = np.dot(min_reflectance, S_psi) / scale
-        print(max_color_psi.shape)
        
-
         # print('==========')
         # print(max_color_psi / scale)
         # print('\n\n\n\n\n\n')
         # print([max_color_psi / scale, min_color_psi / scale])
+
         # print('==========')
         mmb_extr_points.extend([min_color_psi, max_color_psi])
         # print('==========')
-
 
     print((mmb_extr_points))
     return mmb_extr_points
 
 #TODO: maybe merge together ocs and mmb funcs? (get_figure_volume/points)
 
-def get_ocs_points(illum, sens):
+def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
     S = np.stack([illum * sens_ for sens_ in sens.T], axis = 1)
 
     ocs_extr_points = []
 
-    sampling_resolution = S.shape[1] # k belongs to R^(2N)
+    vector_size = S.shape[1] # k belongs to R^(N)
 
-    for k in sample_unit_sphere(sampling_resolution):
+    for k in sample_unit_sphere(vector_size, sampling_resolution):
         max_reflectance, min_reflectance =\
         solve_linear_problem(objective_func_coef = np.dot(S, k), bounds = (0,1))
 

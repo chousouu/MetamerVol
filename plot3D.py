@@ -5,8 +5,6 @@ import numpy as np
 def mesh_from_hull(hull, color, name):
 	vertices = hull.points 
 	faces = hull.simplices
-	print("faces", faces)
-	print("vertices", vertices)
 	mesh = \
 		go.Mesh3d(
 		   x=np.array(vertices)[:,0],
