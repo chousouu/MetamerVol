@@ -8,6 +8,7 @@ WAVELENGTH_RESOLUTION = 10
 # 1.PEP8 style guide check
 # 2.Make descriptions to funcs
 # 3.do we norm r(lambda) ????????????????????UPD:where??
+# 4.maybe merge together ocs and mmb funcs? (get_figure_volume/points /// get_figure_s_t[subject to])
 
 
 def sample_unit_sphere(color_sys, wavelengths, sample_amount):
@@ -75,41 +76,21 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
 
     mmb_extr_points = []
 
-    # print("shape of unit sphere", sample_unit_sphere(vector_size, sampling_resolution).shape)
-
-    # !!!!is amount of k's component should be equal to 2N / N for mmb/ocs? according to (3) in the statya 
     for k in sample_unit_sphere(S, wavelengths, sampling_resolution):
-
-        # print("S, k, S@K", S.shape, k.shape, np.dot(S, k).shape)
-        # print("constr_func = value :", S_phi.shape, "=", metameric_color.shape, metameric_color)
-        # print("z0 size : ", metameric_color.ndim, metameric_color.shape, metameric_color)
-        # print(f"b = {metameric_color.shape}/ {metameric_color.ndim}, A_Eq = {S_phi.T.shape}, {metameric_color.shape} == {S_phi.T.shape[0]}")
-
         max_reflectance, min_reflectance =\
         solve_linear_problem(objective_func_coef = np.dot(S, k), constrain_func = S_phi.T ,
                              constrain_func_value = metameric_color, bounds = (0, 1))
 
-        # scale so the brightest illum color response == 1  
-        # scale = np.max(S_psi)
-        # print(max_reflectance, min_reflectance)
-        
+        # scale so the brightest illum color response == 1          
         scale = np.max(np.dot(sens_psi.T, illum_psi))
 
         max_color_psi = np.dot(max_reflectance, S_psi) / scale
         min_color_psi = np.dot(min_reflectance, S_psi) / scale
-       
-        # print('==========')
-        # print(max_color_psi / scale)
-        # print('\n\n\n\n\n\n')
-        # print([max_color_psi / scale, min_color_psi / scale])
 
-        # print('==========')
         mmb_extr_points.extend([min_color_psi, max_color_psi])
-        # print('==========')
 
     return mmb_extr_points
 
-#TODO: maybe merge together ocs and mmb funcs? (get_figure_volume/points)
 
 def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
     S = np.stack([illum * sens_ for sens_ in sens.T], axis = 1)
@@ -134,3 +115,24 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
 
     return ocs_extr_points
 
+# def get_hulls_dict(colors, 
+#                         illum_phi, sens_phi,
+#                         illum_psi, sens_psi):
+    
+#     """
+#     colors either a single [r,g,b] (1D)array or [length x width x rgb] (3D) array
+#     returns dict {color : convexhull}
+#     """
+
+#     for color in colors:
+#     hulls.update({rgb_to_string(color) : \
+#                   ConvexHull(mm.get_mmb_points(metameric_color = color, 
+#                    illum_phi = D65_Illuminant, illum_psi = D65_Illuminant,
+#                    sens_phi = canon_sens, sens_psi = cie1964))} )
+
+
+def get_unique_colors(image):
+    pass
+
+def get_colour_sys(illum, sens):
+    return np.stack([illum * sens for sens in sens.T], axis = 1)    
