@@ -8,7 +8,6 @@ from PIL import Image
 
 PATH_LI = "/home/yasin/iitp/li_ds"
 ILLUM_PATH = "cie/std.csv"
-SAVE_IMAGES = '/home/yasin/iitp/tempdir'
 
 def read_h5(h5_path : Path, wv_hsi: np.ndarray):
     with h5py.File(h5_path, 'r') as fh:
@@ -65,9 +64,12 @@ def get_colour_responses(image_name,
     return img
 
 
+def gamma_correction(img):
+    return awb.lin_rgb2srgb(img)
+
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--outdir', type=Path, default=Path(SAVE_IMAGES))
+    parser.add_argument('-o', '--outdir', type=Path, default=Path(None))
     parser.add_argument('-s', '--sensitivities', type=str, default='canon')
     args = parser.parse_args()
 
