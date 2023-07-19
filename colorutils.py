@@ -12,7 +12,6 @@ def find_non_zero_elem(arr : np.ndarray):
     """
     works on 1d only
     """
-    # print(f"\n\n{arr=} ({arr.shape=}), chose {np.nonzero(arr)[0][0]}\n\n")
     return np.nonzero(arr)[0][0]
 
 
@@ -40,6 +39,19 @@ def get_unique_colors(image):
 
 def get_colour_sys(illum, sens):
     return np.stack([illum * sens for sens in sens.T], axis = 1)    
+
+def get_colour_response(sensitivies, illum, reflectances, lambdas):
+    """
+    illum : q-array
+    reflectances: q-array
+    sensitivities : 3 x q array
+    """
+    tristims = list()
+    for sens in sensitivies:
+        colour_component = np.trapz(y = sens * (illum * reflectances), x = lambdas) 
+        tristims.append(colour_component)
+
+    return np.stack(tristims, axis = 0)
 
 def rgb_to_string(rgb):
     return '_'.join([(str(format(_, '.4f'))) for _ in rgb])

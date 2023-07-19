@@ -9,9 +9,12 @@ import argparse
 from pathlib import Path
 from functools import partial
 
+import awb #;;;;;
+
 from awb import SpectralFunction, SpectralSensitivies, CameraRender
 from awb import sensitivies_path, load_illuminants, spectral_data
 from awb import STD_CHANNELS_NAMES, DC, SG
+
 
 from skimage import color
 from tqdm    import tqdm
@@ -30,6 +33,8 @@ from sklearn.model_selection import LeaveOneOut
 from utils import deltaE_ciede2000, deltaE_Luv
 from utils import angular_error
 from utils import RootPolynomialFeatures, RobustScalableRationalFeatures, Poly_RootPoly_Scalrat, RootPoly_Scalrat
+import plot3D 
+
 
 @dataclass
 class ExperimentSetup:
@@ -99,10 +104,9 @@ def run_once(src, dst, error_fun, settings):
                                                     cur_X_test,
                                                     feature_generator,
                                                     positive=settings.positive)
-                print(f"{pred.shape=}")
 
             print("got best model from check_model")
-            results = error_fun(pred, dst)
+            results = error_fun(pred, src) # CHECK! was dst
 
             print(f"results : {np.array(results).shape}")
             results_mean = np.mean(results)
@@ -120,9 +124,6 @@ def run_once(src, dst, error_fun, settings):
     return metrics_df
 
 def preprocess_data(src, dst, settings, src_wp=None, dst_wp=None):
-    """
-    apply white point 
-    """
     if settings.use_wp:
         src /= src_wp[None, ...]
         dst /= dst_wp[None, ...]
@@ -146,7 +147,7 @@ def run_repeatedly(src, dst, err_fun, settings): # not using
 def get_chart_data(chart, render, illum):
     color_reflectance_s = list(chart.reflectances.values())
 
-    tristim_s = list()
+    tristim_s = []
     for color_reflectance in color_reflectance_s:
         radiance = color_reflectance * illum
         tristim = render.render(radiance)
@@ -181,14 +182,13 @@ def prepare_and_run(settings, outdir):
     results = dict()
 
     print("Got all cameras, starting run")
-
+        
     for chart_name, chart in charts.items():
         for camera_name, src_camera in src_cameras.items():
             src_render = CameraRender(src_camera)
 
             src_data = get_chart_data(chart, src_render, illum)
             dst_data = get_chart_data(chart, dst_render, illum)
-
             print(f"{src_data.shape=}, {dst_data.shape=}")
 
             src_wp = src_render.render(illum)
@@ -213,7 +213,7 @@ def prepare_and_run(settings, outdir):
 
             results[(chart_name, camera_name)] = df
 
-    res = pd.concat(results.values()).groupby(level=0)
+    res = pd.concat(results.values()).groupby(level = 0)
     std = res.std().round(2)
     mean = res.mean().round(2)
 
@@ -224,15 +224,15 @@ def prepare_and_run(settings, outdir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--outdir', type=Path, default = Path("/home/yasin/iitp/tempdir"))
-    parser.add_argument('--runs', type=int, default=1)
-    parser.add_argument('--use_wp', action='store_true')
-    parser.add_argument('--positive', action='store_true')
-    parser.add_argument('--error_metric', type=str, default='metamer')
+    parser.add_argument('-o', '--outdir', type = Path, default = Path("/home/yasin/iitp/tempdir"))
+    parser.add_argument('--runs', type = int, default = 1)
+    parser.add_argument('--use_wp', action = 'store_true')
+    parser.add_argument('--positive', action = 'store_true')
+    parser.add_argument('--error_metric', type=str, default = 'metamer')
 
     args = parser.parse_args()
 
-    args.outdir.mkdir(exist_ok=True, parents=True)
+    args.outdir.mkdir(exist_ok = True, parents = True)
 
     settings = ExperimentSetup.from_argparse(args)
 

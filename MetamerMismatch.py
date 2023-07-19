@@ -95,10 +95,7 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
         # print(f"{S=}\n\n\n\n\n\n\n")
         # print(f"{k=}\n\n\\n\n\n\n\n")
         # print(np.dot(S,k))
-        # print(np.all(np.isnan(np.dot(S, k))))
-        if np.any(np.isnan((np.dot(S, k)))):
-            raise ValueError("aa")
-    
+        # print(np.all(np.isnan(np.dot(S, k))))    
         # print("sampled k")
         max_reflectance, min_reflectance =\
         solve_linear_problem(objective_func_coef = np.dot(S, k), constrain_func = S_phi.T ,
@@ -106,23 +103,19 @@ def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
 
         # print("solved problem.")
         # scale so the brightest illum color response == 1          
-        scale = np.dot(sens_psi.T, illum_psi)
+        scale = cutils.get_colour_response(sens_psi.T, illum_psi, [1] * WAVELENGTH_RANGE.shape[0], WAVELENGTH_RANGE)
         # print(scale)
-        max_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, max_reflectance, WAVELENGTH_RANGE)
-        min_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, min_reflectance, WAVELENGTH_RANGE)
+        max_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, max_reflectance, WAVELENGTH_RANGE) / scale
+        min_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, min_reflectance, WAVELENGTH_RANGE) / scale
 
-        print(f"{max_color_psi.max()=}")
         # print(max_reflectance.shape, S_psi.shape)
         # print('shape', (S_psi.T).shape)
         # scale = np.trapz(S_psi.T, WAVELENGTH_RANGE, axis=-1)
         # print(scale)
         # max_color_psi = np.trapz(max_reflectance * S_psi.T, WAVELENGTH_RANGE, axis=-1)  / scale
         # min_color_psi = np.trapz(min_reflectance * S_psi.T, WAVELENGTH_RANGE, axis=-1)  / scale
-
-        scale = (np.dot(sens_psi.T, illum_psi))
-
-        max_color_psi = np.dot(max_reflectance, S_psi) / scale
-        min_color_psi = np.dot(min_reflectance, S_psi) / scale
+        # max_color_psi = np.dot(max_reflectance, S_psi) / scale
+        # min_color_psi = np.dot(min_reflectance, S_psi) / scale
 
         mmb_extr_points.extend([min_color_psi, max_color_psi])
 
@@ -139,11 +132,10 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
         solve_linear_problem(objective_func_coef = np.dot(S, k), bounds = (0,1))
 
         # scale so the brightest illum color response == 1  
-        scale = np.dot(sens_psi.T, illum_psi)
-        
-        max_color = np.dot(max_reflectance, S) / scale
-        min_color = np.dot(min_reflectance, S) / scale
-        max_color = awb.camera_render()
+        scale = cutils.get_colour_response(sens.T, illum, [1] * WAVELENGTH_RANGE.shape[0], WAVELENGTH_RANGE)
+
+        max_color = cutils.get_colour_response(sens.T, illum, max_reflectance, WAVELENGTH_RANGE) / scale
+        min_color = cutils.get_colour_response(sens.T, illum, min_reflectance, WAVELENGTH_RANGE) / scale
 
         ocs_extr_points.extend([min_color, max_color])
 
@@ -187,6 +179,7 @@ def deltaE_Metamer(x, y, x_wp=None, y_wp=None,
         y_wp = np.ones_like(y)
 
     print("calculating deltaE metamer")
+    return calculate_deltaE_Metamer(x, y, sens_phi, sens_psi, illum)
     return calculate_deltaE_Metamer(x / x_wp * D65_xyz, y / y_wp * D65_xyz,
                                     sens_phi, sens_psi, illum)
 
@@ -207,20 +200,21 @@ def calculate_deltaE_Metamer(pred_tristim, dst_tristim,
     distances = []
     tmp_hull_dst = []
     tmp_color_pred = []
+    ocs = hull_from_points(get_ocs_points(illum, sens_psi))
     for i in range(pred_unique.shape[0]):
-        # print(dst_unique[i])
+        print("dst unique ", dst_unique[i])
         color_mmb = get_mmb_points(dst_unique[i],
                                    illum_phi = illum, sens_phi = sens_phi,
                                    illum_psi = illum, sens_psi = sens_psi)
         
         # print('aaaaaaaaaaaaaaaaaaaa', np.array(color_mmb).max(), np.array(color_mmb).min())
         hull_dst_i = hull_from_points(color_mmb)
-
+        print(f"{np.array(color_mmb).max()=}")
         tmp_hull_dst.append(hull_dst_i)
         tmp_color_pred.append(dst_unique[i])
         distances.append(dist(hull_dst_i, pred_unique[i]))
-
-    plot3D.plot_scene([hull_dst_i], color_predictions=None)
+    
+    plot3D.plot_scene(tmp_hull_dst, color_predictions = tmp_color_pred, ocs=ocs)
     raise ValueError
     print("dist.len", len(distances), np.array(distances).min(), np.array(distances).max())
     return np.clip(distances, 0, None)
