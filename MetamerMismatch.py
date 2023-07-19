@@ -3,12 +3,14 @@ import scipy
 import pygel3d.gl_display as gd
 from pygel3d import hmesh as hm 
 from scipy.spatial import ConvexHull
+import plot3D
 import utils
 import colorutils as cutils
 import awb
+from idk import get_chart_data
 
-NUMBER_OF_SAMPLES = 1000
-WAVELENGTH_RANGE = np.arange(400, 701, 10)
+NUMBER_OF_SAMPLES = 10 # 1000
+WAVELENGTH_RANGE = awb.SpectralFunction.lambdas
 D65_xyz = np.array([95.047, 100., 108.883]) / 100
 
 # GENERAL TODO'S (important -> less important):
@@ -22,15 +24,21 @@ def sample_unit_sphere(color_sys, sample_amount, wavelengths = WAVELENGTH_RANGE)
     """
     # returns k that belongs to R^(2N) for mmb and R^N for ocs
     """
-    vector_size = color_sys.shape[1]
-    # wavelengths_size = np.shape(wavelengths)[0]
-    wavelengths_size = 431
+    #clean from zeroed arrays
+    # print(f"before, {color_sys.shape=}")
+    color_sys_clean = cutils.clear_array_from_zeros(color_sys)
+    # print(f"after, {color_sys_clean.shape=}")
+    wavelengths_size, vector_size = color_sys_clean.shape
+    # print(f"{wavelengths_size=}, {vector_size=}")
     k_sampled = []    
     wave = 0
 
     for _ in range(sample_amount):
+        i = cutils.find_non_zero_elem(color_sys_clean[wave, :])
+        s_except_i, s_i  = np.concatenate((color_sys_clean[wave, :i], color_sys_clean[wave, i+1:])), color_sys_clean[wave, i]
+        # print(f"{s_except_i=}, {s_i=}")
         rand_components = np.random.randn(vector_size - 1, 1)
-        k_1 = np.sum(np.multiply(rand_components.T, color_sys[wave, 1:])) / color_sys[wave, 0]
+        k_1 = np.sum(np.multiply(rand_components.T, s_except_i)) / s_i
         k_i = np.append(k_1, rand_components)
         k_sampled.append((k_i / np.linalg.norm(k_i)).tolist())
         wave = (wave + 1) % wavelengths_size
@@ -69,31 +77,56 @@ def solve_linear_problem(objective_func_coef, constrain_func = None,
     return (x_max, x_min)
 
 def get_mmb_points(metameric_color,  #<- metameric colors phi(r) in phi-space
-               S_phi, S_psi,
-               sampling_resolution = NUMBER_OF_SAMPLES):
-#illum_phi, sens_phi,
-#illum_psi, sens_psi,
-    # S_phi = cutils.get_colour_sys(illum_phi, sens_phi)
-    # S_psi = cutils.get_colour_sys(illum_psi, sens_psi) # q x N, q - wavelength resolution
+                illum_phi, sens_phi,
+                illum_psi, sens_psi,
+                sampling_resolution = NUMBER_OF_SAMPLES):
+
+    S_phi = cutils.get_colour_sys(illum_phi, sens_phi)
+    S_psi = cutils.get_colour_sys(illum_psi, sens_psi) # q x N, q - wavelength resolution
     S = np.concatenate((S_phi, S_psi), axis = 1) #q x 2N; q - wavelength resolution
 
     mmb_extr_points = []
+    # print("shape phi", S.shape)
+
 
     for k in sample_unit_sphere(S, sampling_resolution):
-        print(f"{S.shape=}, {k.shape=}, {np.dot(S, k).shape=}, {S_phi.T.shape=}")
-        print(S@k)
+        # print(f"{S.shape=}, {k.shape=}, {np.dot(S, k).shape=}, {S_phi.T.shape=}")
+        
+        # print(f"{S=}\n\n\n\n\n\n\n")
+        # print(f"{k=}\n\n\\n\n\n\n\n")
+        # print(np.dot(S,k))
+        # print(np.all(np.isnan(np.dot(S, k))))
+        if np.any(np.isnan((np.dot(S, k)))):
+            raise ValueError("aa")
+    
+        # print("sampled k")
         max_reflectance, min_reflectance =\
         solve_linear_problem(objective_func_coef = np.dot(S, k), constrain_func = S_phi.T ,
                              constrain_func_value = metameric_color, bounds = (0, 1))
 
+        # print("solved problem.")
         # scale so the brightest illum color response == 1          
-        scale = np.max(np.dot(sens_psi.T, illum_psi))
+        scale = np.dot(sens_psi.T, illum_psi)
+        # print(scale)
+        max_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, max_reflectance, WAVELENGTH_RANGE)
+        min_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, min_reflectance, WAVELENGTH_RANGE)
+
+        print(f"{max_color_psi.max()=}")
+        # print(max_reflectance.shape, S_psi.shape)
+        # print('shape', (S_psi.T).shape)
+        # scale = np.trapz(S_psi.T, WAVELENGTH_RANGE, axis=-1)
+        # print(scale)
+        # max_color_psi = np.trapz(max_reflectance * S_psi.T, WAVELENGTH_RANGE, axis=-1)  / scale
+        # min_color_psi = np.trapz(min_reflectance * S_psi.T, WAVELENGTH_RANGE, axis=-1)  / scale
+
+        scale = (np.dot(sens_psi.T, illum_psi))
 
         max_color_psi = np.dot(max_reflectance, S_psi) / scale
         min_color_psi = np.dot(min_reflectance, S_psi) / scale
 
         mmb_extr_points.extend([min_color_psi, max_color_psi])
 
+    # print("Returning mmb points")
     return mmb_extr_points
 
 def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
@@ -106,10 +139,11 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
         solve_linear_problem(objective_func_coef = np.dot(S, k), bounds = (0,1))
 
         # scale so the brightest illum color response == 1  
-        scale = np.max(np.dot(sens.T, illum))
+        scale = np.dot(sens_psi.T, illum_psi)
         
         max_color = np.dot(max_reflectance, S) / scale
         min_color = np.dot(min_reflectance, S) / scale
+        max_color = awb.camera_render()
 
         ocs_extr_points.extend([min_color, max_color])
 
@@ -146,20 +180,19 @@ def dist(hull, point): #temp(?) version of func
     return dist
 
 def deltaE_Metamer(x, y, x_wp=None, y_wp=None, 
-                   sens_before = None, sens_after = None, 
-                   illum = None):
+                   sens_phi = None, sens_psi = None, illum = None):
     if x_wp is None:
         x_wp = np.ones_like(x)
     if y_wp is None:
         y_wp = np.ones_like(y)
 
+    print("calculating deltaE metamer")
     return calculate_deltaE_Metamer(x / x_wp * D65_xyz, y / y_wp * D65_xyz,
-                                    sens_before, sens_after, illum)
+                                    sens_phi, sens_psi, illum)
 
 #think of how to make deltaE (not just sum of distances)
 def calculate_deltaE_Metamer(pred_tristim, dst_tristim,
-                             sens_before = None, sens_after = None, 
-                             illum = None):
+                             sens_phi = None, sens_psi = None, illum = None):
     """
     dst_tristim  : whole image
     pred_tristim : 
@@ -167,17 +200,27 @@ def calculate_deltaE_Metamer(pred_tristim, dst_tristim,
     pred_unique = cutils.get_unique_colors(pred_tristim)
     dst_unique = cutils.get_unique_colors(dst_tristim)
 
+    print(pred_unique.shape , dst_unique.shape)
     if pred_unique.shape != dst_unique.shape:
         raise ValueError("Shapes are not equal! (Rethink logic?)")
 
     distances = []
-
+    tmp_hull_dst = []
+    tmp_color_pred = []
     for i in range(pred_unique.shape[0]):
+        # print(dst_unique[i])
         color_mmb = get_mmb_points(dst_unique[i],
-                                    sens_phi = sens_before, illum_phi = illum,
-                                    sens_psi = sens_after , illum_psi = illum)
-        hull_dst = hull_from_points(color_mmb)
-        distances.append(dist(hull_dst, pred_unique)) #check for points in if value is < 0
+                                   illum_phi = illum, sens_phi = sens_phi,
+                                   illum_psi = illum, sens_psi = sens_psi)
+        
+        # print('aaaaaaaaaaaaaaaaaaaa', np.array(color_mmb).max(), np.array(color_mmb).min())
+        hull_dst_i = hull_from_points(color_mmb)
 
-    return distances
+        tmp_hull_dst.append(hull_dst_i)
+        tmp_color_pred.append(dst_unique[i])
+        distances.append(dist(hull_dst_i, pred_unique[i]))
 
+    plot3D.plot_scene([hull_dst_i], color_predictions=None)
+    raise ValueError
+    print("dist.len", len(distances), np.array(distances).min(), np.array(distances).max())
+    return np.clip(distances, 0, None)
