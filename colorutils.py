@@ -49,6 +49,8 @@ def get_colour_response(sensitivies, illum, reflectances, lambdas):
     tristims = list()
     for sens in sensitivies:
         colour_component = np.trapz(y = sens * (illum * reflectances), x = lambdas) 
+        # colour_component = np.trapz(y = sens * tmp, x = lambdas) 
+
         tristims.append(colour_component)
 
     return np.stack(tristims, axis = 0)
