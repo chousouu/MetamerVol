@@ -1,6 +1,5 @@
 import numpy as np
-
-COLOR_EPSILON = 1e-4
+from constants import COLOR_EPSILON
 
 def clear_array_from_zeros(arr : np.ndarray):
     if np.all(arr == 0):
@@ -49,7 +48,6 @@ def get_colour_response(sensitivies, illum, reflectances, lambdas):
     tristims = list()
     for sens in sensitivies:
         colour_component = np.trapz(y = sens * (illum * reflectances), x = lambdas) 
-        # colour_component = np.trapz(y = sens * tmp, x = lambdas) 
 
         tristims.append(colour_component)
 
