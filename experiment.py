@@ -118,7 +118,7 @@ def run_once(src, dst, error_fun, settings):
                                                     positive=settings.positive)
 
             pred = normalize_chart_colors(pred)
-            print("got best model from check_model")
+
             results = error_fun(pred, src) # CHECK! was dst
 
             print(f"results : {np.array(results).shape}")
@@ -206,12 +206,15 @@ def prepare_and_run(settings, outdir):
 
             src_data = get_chart_data(chart, src_render, illum)
             dst_data = get_chart_data(chart, dst_render, illum)
-            print(f"{src_data.shape=}, {dst_data.shape=}")
+            print(f"{np.amax(src_data, axis = 0)}, {np.amax(dst_data, axis=0)=}")
 
             src_wp = src_render.render(illum)
             dst_wp = dst_render.render(illum)
+            print('wp', src_wp, dst_wp)
 
-            src_data, dst_data = preprocess_data(src_data, dst_data, settings, src_wp, dst_wp)
+            print("before", src_data.max(), dst_data.max())
+            src_data, dst_data = preprocess_data(src_data, dst_data, settings, src_wp, dst_wp) #xz
+            print("after", src_data.max(), dst_data.max())
 
             if settings.error_metric == 'metamer':
                 src_cam_sens = (src_camera.sensitivities.y).T
@@ -244,7 +247,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--outdir', type = Path, default = Path("/home/yasin/iitp/tempdir"))
     parser.add_argument('--runs', type = int, default = 1)
-    parser.add_argument('--use_wp', action = 'store_true')
+    parser.add_argument('--use_wp', action = 'store_true', default = True)
     parser.add_argument('--positive', action = 'store_true')
     parser.add_argument('--error_metric', type=str, default = 'metamer')
 
