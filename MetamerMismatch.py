@@ -3,13 +3,10 @@ import scipy
 import pygel3d.gl_display as gd
 from pygel3d import hmesh as hm 
 from scipy.spatial import ConvexHull
-import plot3D
-import utils
 import colorutils as cutils
-import awb
 import matplotlib.pyplot as plt
-NUMBER_OF_SAMPLES = 100 # 1000
-WAVELENGTH_RANGE = awb.SpectralFunction.lambdas
+
+from constants import NUMBER_OF_SAMPLES, WAVELENGTH_RANGE
 
 # GENERAL TODO'S (important -> less important):
 # 1.PEP8 style guide check
@@ -74,6 +71,11 @@ def _solve_linear_problem(objective_func_coef, constrain_func = None,
     # check if x_min = -x_max when one = c = ... *-1 and c = ...
     # as addition : k -> -k is also the solve so c = .... * -1 is alright ig
 
+def project_matrix_on_vector(matrix, vector):
+    result = [np.dot(row_matrix, vector) * vector for row_matrix in matrix]
+    
+    return np.array(result)
+
 def get_mmb_points(metameric_color,
                 illum_phi, sens_phi,
                 illum_psi, sens_psi,
@@ -104,24 +106,41 @@ def get_mmb_points(metameric_color,
     mmb_extr_points : list
         returns points of metamer body's bound as list of (r,g,b) arrays  
     """
-
     S_phi = cutils.get_colour_sys(illum_phi, sens_phi)
     S_psi = cutils.get_colour_sys(illum_psi, sens_psi) # q x N, q - wavelength resolution
+
     S = np.concatenate((S_phi, S_psi), axis = 1) #q x 2N; q - wavelength resolution
+
+    #TODO: think of better name 'scale_to_sys'
+    #TODO: or find a way how to norm S_phi? constrain_func_value = S_phi @ r -> sum(s_i * r_i)
+          # max color resp = sum(s_i * 1)
+          # is there a way to simplify [sum(s_i * r_i) / sum(s_i * 1)] (norm S?)
+    scale_to_sys = cutils.get_colour_response(sens_phi.T, illum_phi, np.ones(WAVELENGTH_RANGE.shape[0]), WAVELENGTH_RANGE)
+    scaled_metameric_color = metameric_color * scale_to_sys
+    
     mmb_extr_points = []
 
-    for k in sample_unit_sphere(S, sampling_resolution):        
+    # TODO: clip numbers that max_reflectance produces, so its only {0, 1}. Example : r = 0.4 -> 0
+    K_s = sample_unit_sphere(S, sampling_resolution)
+    for k in K_s:  
+        # print('----------------')
+        # # print(np.amax(np.dot(S, k).T))
+        # i, j = np.where(np.isclose(K_s, k)) # when comparing floating-point arrays    
+        # print(i, 'th k')
         max_reflectance = _solve_linear_problem(objective_func_coef = np.dot(S, k), constrain_func = S_phi.T,
-                                                constrain_func_value = metameric_color, bounds = (0, 1))
+                                                constrain_func_value = scaled_metameric_color, bounds = (0, 1))
+        # print('wavelengths where r = 1',z + WAVELENGTH_RANGE[0])
+        # plt.plot(WAVELENGTH_RANGE, max_reflectance)
+        # plt.show()
         if max_reflectance is None:
             print(f"failed to compute lingprog {k=}") #tmp
             continue
+        
+        # print('----------------')
         scale = cutils.get_colour_response(sens_psi.T, illum_psi, np.ones(WAVELENGTH_RANGE.shape[0]), WAVELENGTH_RANGE)
-        # print(scale)
         max_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, max_reflectance, WAVELENGTH_RANGE) / scale
 
         mmb_extr_points.extend([max_color_psi])
-    
     return mmb_extr_points
 
 def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
@@ -149,7 +168,8 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
 
     ocs_extr_points = []
 
-    for k in sample_unit_sphere(S, sampling_resolution):
+    K_s = sample_unit_sphere(S, sampling_resolution)
+    for k in K_s:
         max_reflectance = _solve_linear_problem(objective_func_coef = np.dot(S, k), bounds = (0,1))
 
         if max_reflectance is None:
@@ -157,7 +177,6 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
             continue
 
         scale = cutils.get_colour_response(sens.T, illum, [1] * WAVELENGTH_RANGE.shape[0], WAVELENGTH_RANGE)
-
         max_color = cutils.get_colour_response(sens.T, illum, max_reflectance, WAVELENGTH_RANGE) / scale
 
         ocs_extr_points.extend([max_color])
@@ -264,32 +283,70 @@ def calculate_deltaE_Metamer(pred_tristim, src_tristim,
         returns sum of distances throughout the whole image.
     """
 
-#    TODO: add COLOR_EPSILON to declare from what point colors are the same
-
     pred_unique = cutils.get_unique_colors(pred_tristim)
     src_unique = cutils.get_unique_colors(src_tristim)
 
-    print(pred_unique.shape , src_unique.shape)
     if pred_unique.shape != src_unique.shape:
-        raise ValueError("Shapes are not equal! (Rethink logic?)")
+        raise ValueError(f"Shapes are not equal!",
+                        "Number of pred_tristim and src_tristim unique colors have to be equal.",
+                        f"{pred_unique.shape=}, {src_unique.shape=}")
 
     distances = []
-    # tmp_hull_dst = []
-    # tmp_color_pred = []
-    # ocs = hull_from_points(get_ocs_points(illum, sens_psi))
     for i in range(pred_unique.shape[0]):
-        # print("dst unique ", dst_unique[i])
         color_mmb = get_mmb_points(src_unique[i],
                                    illum_phi = illum, sens_phi = sens_phi,
                                    illum_psi = illum, sens_psi = sens_psi)
         hull_dst_i = hull_from_points(color_mmb)
-        # print(f"{np.array(color_mmb).max()=}")
-        # tmp_hull_dst.append(hull_dst_i)
-        # tmp_color_pred.append(dst_unique[i])
+
         distances.append(dist(hull_dst_i, pred_unique[i]))
     
-    # plot3D.plot_scene(tmp_hull_dst, color_predictions = tmp_color_pred, ocs=ocs)
-    # raise ValueError
-    # print("dist.len", len(distances), np.array(distances).min(), np.array(distances).max())
     score = np.clip(distances, 0, None)
     return score
+
+
+def get_scene_details(pred_tristim, src_tristim,
+                             sens_phi, sens_psi, illum):
+    """
+    Prepares all information needed for plotting 
+    Parameters
+    ----------
+    pred_tristim : (N, 3) ndarray
+        predicted colors of image in psi-color-space
+    src_tristim : (N, 3) ndarray
+        original colors of image in phi-color-space 
+    sens_phi :
+        sensitivities in first color space 
+    sens_psi : 
+        sensitivities in second color space
+    illum :
+        illuminations in both color space. 
+
+    N = (width * length) of image
+
+    Returns
+    -------
+    src_hulls : list
+        list of metamer hulls (type == class ConvexHull) made from 'src_unique'
+    pred_unique : ndarray
+        array of unique colors made from 'pred_tristim'
+    ocs : 
+    """
+
+    pred_unique = cutils.get_unique_colors(pred_tristim)
+    src_unique = cutils.get_unique_colors(src_tristim)
+
+    if pred_unique.shape != src_unique.shape:
+        raise ValueError(f"Shapes are not equal!",
+                        "Number of pred_tristim and src_tristim unique colors have to be equal.",
+                        f"{pred_unique.shape=}, {src_unique.shape=}")
+
+    src_hulls = []
+    for i in range(pred_unique.shape[0]):
+        color_mmb = get_mmb_points(src_unique[i],
+                                   illum_phi = illum, sens_phi = sens_phi,
+                                   illum_psi = illum, sens_psi = sens_psi)
+        src_hulls.append(hull_from_points(color_mmb))
+
+    ocs = hull_from_points(get_ocs_points(illum, sens_psi)) 
+
+    return src_hulls, pred_unique, ocs
