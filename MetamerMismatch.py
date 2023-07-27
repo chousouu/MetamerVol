@@ -7,17 +7,14 @@ import colorutils as cutils
 import matplotlib.pyplot as plt
 
 from constants import NUMBER_OF_SAMPLES, WAVELENGTH_RANGE
-
 # GENERAL TODO'S (important -> less important):
 # 1.PEP8 style guide check
-# 2.Make descriptions to funcs
 # 3.do we norm r(lambda) ????????????????????UPD:where??
-# 4.maybe merge together ocs and mmb funcs? (get_figure_volume/points /// get_figure_s_t[subject to])
 
 
-def sample_unit_sphere(color_sys, sample_amount = NUMBER_OF_SAMPLES):
+def sample_unit_sphere(color_sys, sample_amount : int = NUMBER_OF_SAMPLES):
     """
-    Samples k-vectors of size N that are zero-crossings of linear combination color_sys_i * k_i
+    Samples k-vectors of size N
 
     Parameters
     ----------
@@ -32,26 +29,13 @@ def sample_unit_sphere(color_sys, sample_amount = NUMBER_OF_SAMPLES):
     Returns
     -------
     k : ndarray
-        returns (N, sample_amount) array
+        returns (sample_amount, N) normed array
     """
-    
-    #remove zeroed arrays
-    color_sys_clean = cutils.clear_array_from_zeros(color_sys)
-    wavelengths_size, vector_size = color_sys_clean.shape
-    k_sampled = []    
-    wave = 0
+    vector_size = color_sys.shape[1]
 
-    for _ in range(sample_amount):
-        i = cutils.find_non_zero_elem(color_sys_clean[wave, :])
-        s_except_i, s_i  = np.concatenate((color_sys_clean[wave, :i], color_sys_clean[wave, i+1:])), color_sys_clean[wave, i]
-        # print(f"{s_except_i=}, {s_i=}")
-        rand_components = np.random.randn(vector_size - 1, 1)
-        k_1 = np.sum(np.multiply(rand_components.T, s_except_i)) / s_i
-        k_i = np.append(k_1, rand_components)
-        k_sampled.append((k_i / np.linalg.norm(k_i)).tolist())
-        wave = (wave + 1) % wavelengths_size
+    sampled_ks = np.random.randn(sample_amount, vector_size)
 
-    return np.reshape(np.array(k_sampled), (vector_size, sample_amount)).T
+    return sampled_ks / np.linalg.norm(sampled_ks)
 
 def _solve_linear_problem(objective_func_coef, constrain_func = None, 
                          constrain_func_value = None, bounds = None):
@@ -66,20 +50,28 @@ def _solve_linear_problem(objective_func_coef, constrain_func = None,
     return None
 
     # TODO: check if x_min is NEEDED. i think it might not be right. (ask Vasya?)
-    # TODO: add optimized version with SVD (?)
 
     # check if x_min = -x_max when one = c = ... *-1 and c = ...
     # as addition : k -> -k is also the solve so c = .... * -1 is alright ig
 
-def project_matrix_on_vector(matrix, vector):
-    result = [np.dot(row_matrix, vector) * vector for row_matrix in matrix]
-    
-    return np.array(result)
+def _clip_to_zero_one(reflectances):
+    reflectances[reflectances > 0.5] = 1
+    reflectances[reflectances <= 0.5] = 0
+
+    return reflectances
+
+def _apply_SVD(S, use_SVD : bool):
+    S_or_U = S
+    if use_SVD:
+        S_or_U, _, _ = np.linalg.svd(S, full_matrices = False)
+
+    return S_or_U
 
 def get_mmb_points(metameric_color,
                 illum_phi, sens_phi,
                 illum_psi, sens_psi,
-                sampling_resolution : int = NUMBER_OF_SAMPLES):
+                sampling_resolution : int = NUMBER_OF_SAMPLES,
+                use_SVD : bool = True):
     """
     Returns bounds of metamer body in psi-color-space induced by 'metameric_color' in phi-color-space
 
@@ -97,6 +89,8 @@ def get_mmb_points(metameric_color,
         sensitivities in second(psi) color space
     samping_resolution : int, optional
         amount of vectors to sample
+    use_SVD : bool, optional
+        Use SVD for better count of volume. default = True
 
     q - wavelength resolution. For example, q = int(780 - 350) + 1 
     N - number of channels. For example, r,g,b -> N = 3 
@@ -106,44 +100,36 @@ def get_mmb_points(metameric_color,
     mmb_extr_points : list
         returns points of metamer body's bound as list of (r,g,b) arrays  
     """
-    S_phi = cutils.get_colour_sys(illum_phi, sens_phi)
-    S_psi = cutils.get_colour_sys(illum_psi, sens_psi) # q x N, q - wavelength resolution
+    S_phi = cutils.get_colour_sys(illum_phi, sens_phi) # q x N
+    S_psi = cutils.get_colour_sys(illum_psi, sens_psi) # q x N
 
-    S = np.concatenate((S_phi, S_psi), axis = 1) #q x 2N; q - wavelength resolution
+    S = np.concatenate((S_phi, S_psi), axis = 1) #q x 2N
 
-    #TODO: think of better name 'scale_to_sys'
-    #TODO: or find a way how to norm S_phi? constrain_func_value = S_phi @ r -> sum(s_i * r_i)
-          # max color resp = sum(s_i * 1)
-          # is there a way to simplify [sum(s_i * r_i) / sum(s_i * 1)] (norm S?)
     scale_to_sys = cutils.get_colour_response(sens_phi.T, illum_phi, np.ones(WAVELENGTH_RANGE.shape[0]), WAVELENGTH_RANGE)
     scaled_metameric_color = metameric_color * scale_to_sys
     
     mmb_extr_points = []
+    
+    S_or_U = _apply_SVD(S, use_SVD)
 
-    # TODO: clip numbers that max_reflectance produces, so its only {0, 1}. Example : r = 0.4 -> 0
-    K_s = sample_unit_sphere(S, sampling_resolution)
-    for k in K_s:  
-        # print('----------------')
-        # # print(np.amax(np.dot(S, k).T))
-        # i, j = np.where(np.isclose(K_s, k)) # when comparing floating-point arrays    
-        # print(i, 'th k')
-        max_reflectance = _solve_linear_problem(objective_func_coef = np.dot(S, k), constrain_func = S_phi.T,
+    for k in sample_unit_sphere(S, sampling_resolution):  
+        max_reflectance = _solve_linear_problem(objective_func_coef = np.dot(S_or_U, k), constrain_func = S_phi.T,
                                                 constrain_func_value = scaled_metameric_color, bounds = (0, 1))
-        # print('wavelengths where r = 1',z + WAVELENGTH_RANGE[0])
-        # plt.plot(WAVELENGTH_RANGE, max_reflectance)
-        # plt.show()
+
+        max_reflectance = _clip_to_zero_one(max_reflectance)
+        
         if max_reflectance is None:
-            print(f"failed to compute lingprog {k=}") #tmp
             continue
         
-        # print('----------------')
         scale = cutils.get_colour_response(sens_psi.T, illum_psi, np.ones(WAVELENGTH_RANGE.shape[0]), WAVELENGTH_RANGE)
         max_color_psi = cutils.get_colour_response(sens_psi.T, illum_psi, max_reflectance, WAVELENGTH_RANGE) / scale
 
         mmb_extr_points.extend([max_color_psi])
     return mmb_extr_points
 
-def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
+def get_ocs_points(illum, sens, 
+                   sampling_resolution : int = NUMBER_OF_SAMPLES,
+                   use_SVD : bool = True):
     """
     Returns bounds of object colour solid in color-space
 
@@ -155,6 +141,8 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
         sensitivities in color space
     samping_resolution : int, optional
         amount of vectors to sample
+    use_SVD : bool, optional
+        Use SVD for better count of volume. default = True
 
     q - wavelength resolution. For example, q = int(780 - 350) + 1 
     N - number of channels. For example, r,g,b -> N = 3
@@ -165,17 +153,19 @@ def get_ocs_points(illum, sens, sampling_resolution = NUMBER_OF_SAMPLES):
         returns points of ocs's bound as list of (r,g,b) arrays  
     """
     S = cutils.get_colour_sys(illum, sens)
+    
+    S_or_U = _apply_SVD(S, use_SVD)
 
     ocs_extr_points = []
 
-    K_s = sample_unit_sphere(S, sampling_resolution)
-    for k in K_s:
-        max_reflectance = _solve_linear_problem(objective_func_coef = np.dot(S, k), bounds = (0,1))
+    for k in sample_unit_sphere(S, sampling_resolution):
+        max_reflectance = _solve_linear_problem(objective_func_coef =  np.dot(S_or_U, k), bounds = (0,1))
+
+        max_reflectance = _clip_to_zero_one(max_reflectance)
 
         if max_reflectance is None:
-            print(f"failed to compute lingprog {k=}") # tmp
             continue
-
+        
         scale = cutils.get_colour_response(sens.T, illum, [1] * WAVELENGTH_RANGE.shape[0], WAVELENGTH_RANGE)
         max_color = cutils.get_colour_response(sens.T, illum, max_reflectance, WAVELENGTH_RANGE) / scale
 
@@ -252,7 +242,6 @@ def deltaE_Metamer(x, y, x_wp=None, y_wp=None,
     if y_wp is None:
         y_wp = np.ones_like(y)
 
-    print("calculating deltaE metamer")
     return calculate_deltaE_Metamer(x, y, sens_phi, sens_psi, illum)
 
 #think of how to make deltaE (not just sum of distances)
