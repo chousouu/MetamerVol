@@ -6,10 +6,6 @@ from scipy.spatial import ConvexHull
 import colorutils as cutils
 from constants import NUMBER_OF_SAMPLES, WAVELENGTH_RANGE
 
-# GENERAL TODO'S (important -> less important):
-# 1.PEP8 style guide check
-# 3.do we norm r(lambda) ????????????????????UPD:where??
-
 
 def sample_unit_sphere(color_sys, sample_amount : int = NUMBER_OF_SAMPLES):
     """
@@ -230,16 +226,10 @@ def dist(hull : ConvexHull, point): #temp(?) version of func
 
     return dist
 
-def deltaE_Metamer(x, y, x_wp=None, y_wp=None, 
-                   sens_phi = None, sens_psi = None, illum = None):
-    if x_wp is None:
-        x_wp = np.ones_like(x)
-    if y_wp is None:
-        y_wp = np.ones_like(y)
-
+def deltaE_Metamer(x, y, sens_phi = None, sens_psi = None, illum = None):
+    
     return calculate_deltaE_Metamer(x, y, sens_phi, sens_psi, illum)
 
-#think of how to make deltaE (not just sum of distances)
 def calculate_deltaE_Metamer(pred_tristim, src_tristim,
                              sens_phi, sens_psi, illum):
     """
@@ -284,6 +274,8 @@ def calculate_deltaE_Metamer(pred_tristim, src_tristim,
 
         distances.append(dist(hull_dst_i, pred_unique[i]))
     
+    get_scene_details(pred_tristim, src_tristim, sens_phi, sens_psi, illum)
+
     score = np.clip(distances, 0, None)
     return score
 
@@ -292,6 +284,7 @@ def get_scene_details(pred_tristim, src_tristim,
                              sens_phi, sens_psi, illum):
     """
     Prepares all information needed for plotting 
+
     Parameters
     ----------
     pred_tristim : (N, 3) ndarray
@@ -314,7 +307,7 @@ def get_scene_details(pred_tristim, src_tristim,
     pred_unique : ndarray
         array of unique colors made from 'pred_tristim'
     ocs : ConvexHull
-        Object color solid in psi-color-space
+        object color solid   in psi-color-space
     """
 
     pred_unique = cutils.get_unique_colors(pred_tristim)

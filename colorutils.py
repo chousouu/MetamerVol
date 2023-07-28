@@ -1,19 +1,6 @@
 import numpy as np
 from constants import COLOR_EPSILON
 
-def clear_array_from_zeros(arr : np.ndarray):
-    if np.all(arr == 0):
-        raise ValueError("Fully zeroed array!")
-
-    return arr[arr.any(axis = 1)]
-
-def find_non_zero_elem(arr : np.ndarray):
-    """
-    works on 1d only
-    """
-    return np.nonzero(arr)[0][0]
-
-
 def get_unique_colors(image):
     """
     receives 2D (width * length, 3) or 3D (length, width, 3) image array 
@@ -41,9 +28,20 @@ def get_colour_sys(illum, sens):
 
 def get_colour_response(sensitivies, illum, reflectances, lambdas):
     """
-    illum : q-array
-    reflectances: q-array
-    sensitivities : 3 x q array
+    returns colour response 
+
+    Parameters
+    ----------
+    sensitivities : (3, q) ndarray
+    illum : (q,) ndarray
+    reflectances: (q,) ndarray 
+
+    q - wavelength resolution. For example, q = int(780 - 350) + 1 
+
+    Returns
+    -------
+    k : ndarray
+        returns size 3 colour response array 
     """
     tristims = list()
     for sens in sensitivies:
