@@ -1,15 +1,11 @@
-import matplotlib.pyplot as plt
-import pandas as pd
-import scipy as sp
 import numpy as np
+import pandas as pd
 import MetamerMismatch as mm
 
 from dataclasses import dataclass
 import argparse
 from pathlib import Path
 from functools import partial
-
-import awb #;;;;;
 
 from awb import SpectralFunction, SpectralSensitivies, CameraRender
 from awb import sensitivies_path, load_illuminants, spectral_data
@@ -18,8 +14,6 @@ from awb import STD_CHANNELS_NAMES, DC, SG
 
 from skimage import color
 from tqdm    import tqdm
-
-import random, shutil, h5py, os
 
 from awb.spectral_data           import SpectralData, cameras, reflectances, illuminances
 from awb.rendering.camera_render import CameraRender, camera_render
@@ -92,7 +86,6 @@ def run_once(src, dst, error_fun, settings):
 
     loo = LeaveOneOut()
 
-    print("in run_once()")
     for K in K_s:
 
         feature_name_generator_s = \
@@ -104,7 +97,6 @@ def run_once(src, dst, error_fun, settings):
 
         for feature_name, feature_generator in feature_name_generator_s.items():
             pred = np.empty_like(dst)
-            print('===========================')
             print(f"{feature_name}")
             for train_index_s, test_index in loo.split(src):
                 cur_X_train, cur_Y_train = src[train_index_s, ...], dst[train_index_s, ...]
@@ -133,11 +125,6 @@ def run_once(src, dst, error_fun, settings):
                                    columns=metrics_df.columns,
                                    index=[feature_name])])
 
-# 
-# awb.spectral_rendering.DC.render_img_from_colors(src)
-
-
-            print('===========================')
     return metrics_df
 
 def preprocess_data(src, dst, settings, src_wp=None, dst_wp=None):
@@ -206,22 +193,18 @@ def prepare_and_run(settings, outdir):
 
             src_data = get_chart_data(chart, src_render, illum)
             dst_data = get_chart_data(chart, dst_render, illum)
-            print(f"{np.amax(src_data, axis = 0)}, {np.amax(dst_data, axis=0)=}")
 
             src_wp = src_render.render(illum)
             dst_wp = dst_render.render(illum)
-            print('wp', src_wp, dst_wp)
 
-            print("before", src_data.max(), dst_data.max())
             src_data, dst_data = preprocess_data(src_data, dst_data, settings, src_wp, dst_wp) #xz
-            print("after", src_data.max(), dst_data.max())
 
             if settings.error_metric == 'metamer':
                 src_cam_sens = (src_camera.sensitivities.y).T
                 dst_cam_sens = (dst_camera.sensitivities.y).T
 
-                err_fun = partial(mm.deltaE_Metamer, x_wp=dst_wp, y_wp=dst_wp,
-                                  sens_phi = src_cam_sens, sens_psi = dst_cam_sens, illum = illum.y)
+                err_fun = partial(mm.deltaE_Metamer,
+                                sens_phi = src_cam_sens, sens_psi = dst_cam_sens, illum = illum.y)
             else:
                 raise ValueError(f'Error metric {settings.error_metric} is not a valid metric.')
 
