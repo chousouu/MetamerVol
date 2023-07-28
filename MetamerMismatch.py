@@ -274,8 +274,6 @@ def calculate_deltaE_Metamer(pred_tristim, src_tristim,
 
         distances.append(dist(hull_dst_i, pred_unique[i]))
     
-    get_scene_details(pred_tristim, src_tristim, sens_phi, sens_psi, illum)
-
     score = np.clip(distances, 0, None)
     return score
 
