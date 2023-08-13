@@ -3,15 +3,11 @@ import plotly.graph_objs as go
 import numpy as np
 import MetamerMismatch as mm
 from colorutils import rgb_to_string
+import plotly.express as px
 
-def mesh_from_hull(hull, name = None, title_text = None):
+def mesh_from_hull(hull, name = None, title_text = None, color = None):
     vertices, faces = hull.points, hull.simplices
 
-    color = None
-	    
-    if name == 'ocs':
-        color = 'black'
-        
     mesh = \
         go.Mesh3d(
         x=np.array(vertices)[:,0], y=np.array(vertices)[:,1], z=np.array(vertices)[:,2],
@@ -41,9 +37,9 @@ def plot_scene(colors_mmb, color_predictions = None, ocs = None):
         returns go.Figure that can be used to add/update currently existing plot.
     """
 	layout = go.Layout(scene = dict(
-	            xaxis = dict(range = [0,1], title = 'r', showgrid = False),
-	            yaxis = dict(range = [0,1], title = 'g', showgrid = False),
-	            zaxis = dict(range = [0,1], title = 'b', showgrid = False),
+	            xaxis = dict(range = [0,1], title = 'RED', showgrid = False),
+	            yaxis = dict(range = [0,1], title = 'GREEN', showgrid = False),
+	            zaxis = dict(range = [0,1], title = 'BLUE', showgrid = False),
 	            aspectmode='cube'), legend_font_size = 20)
 	
 	fig = go.Figure(layout = layout)
@@ -63,11 +59,10 @@ def plot_scene(colors_mmb, color_predictions = None, ocs = None):
 			fig.add_trace(mesh_from_hull(colors_mmb[ind], name = f'Metamer', title_text = title_text))
 	else: 
 		for ind, color in enumerate(colors_mmb):
-			fig.add_trace(mesh_from_hull(color, name = f"MMB{ind + 1}"))
-	
+			fig.add_trace(mesh_from_hull(color, name = f"Metamer Body{ind + 1}"))
 		
 	fig.update_traces(showlegend = True)
-
 	fig.show()
+
 	return fig
 
