@@ -1,6 +1,5 @@
 import numpy as np
 import scipy 
-import pygel3d.gl_display as gd
 import pygel3d.hmesh as hm 
 from scipy.spatial import ConvexHull
 import colorutils as cutils

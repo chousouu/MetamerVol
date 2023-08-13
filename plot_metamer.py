@@ -1,9 +1,6 @@
-import plotly.offline as py
-import plotly.graph_objs as go
 import numpy as np
-import MetamerMismatch as mm
+import plotly.graph_objs as go
 from colorutils import rgb_to_string
-import plotly.express as px
 
 def mesh_from_hull(hull, name = None, title_text = None, color = None):
     vertices, faces = hull.points, hull.simplices
